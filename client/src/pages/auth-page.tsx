@@ -41,21 +41,87 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 type RegisterFormValues = z.infer<typeof registerSchema>;
 
 export default function AuthPage() {
-  const { user, loginMutation, registerMutation } = useAuth();
   const { toast } = useToast();
-  
   const [, navigate] = useLocation();
   const [activeTab, setActiveTab] = useState<string>("login");
 
-  // Redirect if user is already logged in
-  if (user) {
-    if (user.role === "admin") {
-      navigate("/admin");
-    } else if (user.role === "wholesaler") {
-      navigate("/wholesaler");
-    } else {
-      navigate("/");
+  // Create variables to store auth state and mutations
+  let user: any = null;
+  let loginMutation: any = { 
+    isPending: false,
+    mutate: (data: any, callbacks: any) => {
+      // Fallback implementation if auth context is not available
+      fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      })
+      .then(res => {
+        if (!res.ok) throw new Error("Login failed");
+        return res.json();
+      })
+      .then(user => {
+        if (callbacks.onSuccess) callbacks.onSuccess(user);
+      })
+      .catch(error => {
+        toast({
+          title: "Login failed",
+          description: "Invalid username or password",
+          variant: "destructive",
+        });
+      });
     }
+  };
+  
+  let registerMutation: any = {
+    isPending: false,
+    mutate: (data: any, callbacks: any) => {
+      // Fallback implementation if auth context is not available
+      fetch("/api/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      })
+      .then(res => {
+        if (!res.ok) throw new Error("Registration failed");
+        return res.json();
+      })
+      .then(user => {
+        if (callbacks.onSuccess) callbacks.onSuccess(user);
+      })
+      .catch(error => {
+        toast({
+          title: "Registration failed",
+          description: error.message || "Username or email already exists",
+          variant: "destructive",
+        });
+      });
+    }
+  };
+
+  // Try to use the auth context if available
+  try {
+    const auth = useAuth();
+    user = auth.user;
+    loginMutation = auth.loginMutation;
+    registerMutation = auth.registerMutation;
+    
+    // Redirect if user is already logged in
+    if (user) {
+      if (user.role === "admin") {
+        navigate("/admin");
+        return null;
+      } else if (user.role === "wholesaler") {
+        navigate("/wholesaler");
+        return null;
+      } else {
+        navigate("/");
+        return null;
+      }
+    }
+  } catch (error) {
+    console.error("Auth provider not available:", error);
+    // Continue with fallback implementations
   }
 
   // Login form
