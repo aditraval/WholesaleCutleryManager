@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Loader2 } from "lucide-react";
 import MainLayout from "@/layouts/MainLayout";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 
 // Login form schema
 const loginSchema = z.object({
@@ -40,9 +41,7 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 type RegisterFormValues = z.infer<typeof registerSchema>;
 
 export default function AuthPage() {
-  // Temporary mock - will be replaced with real auth once backend is ready
-  const user: { id: number; username: string; role: string } | null = null; // Not logged in
-  const [isPending, setIsPending] = useState(false);
+  const { user, loginMutation, registerMutation } = useAuth();
   const { toast } = useToast();
   
   const [, navigate] = useLocation();
@@ -83,53 +82,39 @@ export default function AuthPage() {
     },
   });
 
-  // Submit login form - temporary implementation with hardcoded credentials
+  // Submit login form using real authentication
   function onLoginSubmit(data: LoginFormValues) {
-    setIsPending(true);
-    
-    // Check for our special credentials
-    setTimeout(() => {
-      // Check for admin login
-      if ((data.username === "admin" || data.username === "Test@admin.com") && data.password === "Admin123") {
-        toast({
-          title: "Login successful",
-          description: "Welcome, Admin! Redirecting to admin dashboard...",
-        });
-        // Redirect to admin dashboard
-        setTimeout(() => navigate("/admin"), 500);
-      } 
-      // Check for wholesaler login
-      else if (data.username === "wholesaler" && data.password === "Wholesaler123") {
-        toast({
-          title: "Login successful",
-          description: "Welcome, Wholesaler! Redirecting to wholesaler dashboard...",
-        });
-        // Redirect to wholesaler dashboard
-        setTimeout(() => navigate("/wholesaler"), 500);
-      } 
-      // Invalid credentials
-      else {
-        toast({
-          title: "Login failed",
-          description: "Invalid username or password. Try admin/Admin123 or wholesaler/Wholesaler123",
-          variant: "destructive"
-        });
+    loginMutation.mutate(data, {
+      onSuccess: (user) => {
+        // Redirect based on user role
+        if (user.role === "admin") {
+          navigate("/admin");
+        } else if (user.role === "wholesaler") {
+          navigate("/wholesaler");
+        } else {
+          navigate("/");
+        }
       }
-      setIsPending(false);
-    }, 1000);
+    });
   }
 
-  // Submit registration form - temporary mock implementation
+  // Submit registration form with real authentication
   function onRegisterSubmit(data: RegisterFormValues) {
-    setIsPending(true);
-    // Simulate API call with timeout
-    setTimeout(() => {
-      toast({
-        title: "Registration attempt",
-        description: `Attempted to register ${data.username} from ${data.companyName}. This is a mock implementation.`,
-      });
-      setIsPending(false);
-    }, 1000);
+    registerMutation.mutate(data, {
+      onSuccess: (user) => {
+        toast({
+          title: "Registration successful",
+          description: `Your account has been created.`,
+        });
+        
+        // Redirect based on role
+        if (user.role === "wholesaler") {
+          navigate("/wholesaler");
+        } else {
+          navigate("/");
+        }
+      }
+    });
   }
 
   return (
@@ -185,9 +170,9 @@ export default function AuthPage() {
                       <Button 
                         type="submit" 
                         className="w-full" 
-                        disabled={isPending}
+                        disabled={loginMutation.isPending}
                       >
-                        {isPending ? (
+                        {loginMutation.isPending ? (
                           <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             Signing in...
@@ -347,9 +332,9 @@ export default function AuthPage() {
                       <Button 
                         type="submit" 
                         className="w-full" 
-                        disabled={isPending}
+                        disabled={registerMutation.isPending}
                       >
-                        {isPending ? (
+                        {registerMutation.isPending ? (
                           <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             Registering...

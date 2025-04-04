@@ -11,10 +11,6 @@ export function ProtectedRoute({
   component: () => React.JSX.Element;
   role?: string;
 }) {
-  // TEMPORARY: Direct access for development - comment this out when auth is ready
-  return <Route path={path} component={Component} />;
-  
-  /* ORIGINAL IMPLEMENTATION - Uncomment when auth is ready
   const { user, isLoading } = useAuth();
 
   if (isLoading) {
@@ -47,7 +43,6 @@ export function ProtectedRoute({
   }
 
   return <Route path={path} component={Component} />;
-  */
 }
 
 export function AdminRoute({
