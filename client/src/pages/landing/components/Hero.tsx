@@ -10,13 +10,18 @@ export default function Hero() {
         <div className="max-w-2xl text-white">
           <h1 className="font-bold text-4xl md:text-5xl mb-6">Premium Cutlery for Discerning Wholesalers</h1>
           <p className="text-lg mb-8">Experience exceptional craftsmanship and unmatched quality with our exclusive range of professional-grade cutlery products.</p>
-          <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex flex-col sm:flex-row gap-4 mb-6">
             <Button size="lg" className="bg-primary-600 hover:bg-primary-700">
-              Browse Our Catalog
+              <Link href="/auth-wholesaler">Wholesaler Login</Link>
             </Button>
             <Button size="lg" variant="outline" className="bg-white hover:bg-gray-100 text-primary-700">
               <Link href="#become-wholesaler">Become a Wholesaler</Link>
             </Button>
+          </div>
+          <div className="flex items-center justify-start gap-6">
+            <Link href="/auth-admin">
+              <span className="text-primary-100 hover:text-white underline text-sm">Admin Login</span>
+            </Link>
           </div>
         </div>
       </div>

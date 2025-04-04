@@ -69,11 +69,18 @@ export function MainLayout({ children }: MainLayoutProps) {
                   </button>
                 </>
               ) : (
-                <Link href="/auth">
-                  <a className="py-4 px-1 border-b-2 border-transparent font-medium text-neutral-500 hover:text-neutral-700 hover:border-neutral-300">
-                    Login / Register
-                  </a>
-                </Link>
+                <>
+                  <Link href="/auth-wholesaler">
+                    <a className="py-4 px-1 border-b-2 border-transparent font-medium text-neutral-500 hover:text-neutral-700 hover:border-neutral-300">
+                      Wholesaler Login
+                    </a>
+                  </Link>
+                  <Link href="/auth-admin">
+                    <a className="py-4 px-1 border-b-2 border-transparent font-medium text-neutral-500 hover:text-neutral-700 hover:border-neutral-300">
+                      Admin Login
+                    </a>
+                  </Link>
+                </>
               )}
             </nav>
             
@@ -125,11 +132,18 @@ export function MainLayout({ children }: MainLayoutProps) {
                 </button>
               </>
             ) : (
-              <Link href="/auth">
-                <a className="block py-2 text-neutral-500 hover:text-neutral-700">
-                  Login / Register
-                </a>
-              </Link>
+              <>
+                <Link href="/auth-wholesaler">
+                  <a className="block py-2 text-neutral-500 hover:text-neutral-700">
+                    Wholesaler Login
+                  </a>
+                </Link>
+                <Link href="/auth-admin">
+                  <a className="block py-2 text-neutral-500 hover:text-neutral-700">
+                    Admin Login
+                  </a>
+                </Link>
+              </>
             )}
           </div>
         </div>

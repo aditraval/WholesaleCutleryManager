@@ -1,6 +1,8 @@
 import { Switch, Route } from "wouter";
 import NotFound from "@/pages/not-found";
 import AuthPage from "@/pages/auth-page";
+import AdminAuthPage from "@/pages/auth-admin";
+import WholesalerAuthPage from "@/pages/auth-wholesaler";
 import { ProtectedRoute, AdminRoute, WholesalerRoute } from "./lib/protected-route";
 import AdminDashboard from "@/pages/admin/dashboard";
 import WholesalerDashboard from "@/pages/wholesaler/dashboard";
@@ -20,7 +22,9 @@ function Router() {
     <Switch>
       {/* Public routes */}
       <Route path="/" component={Landing} />
-      <Route path="/auth" component={AuthPage} />
+      <Route path="/auth" component={AuthPage} /> {/* Keeping the old auth page for backward compatibility */}
+      <Route path="/auth-admin" component={AdminAuthPage} />
+      <Route path="/auth-wholesaler" component={WholesalerAuthPage} />
       
       {/* Wholesaler routes */}
       <WholesalerRoute path="/wholesaler" component={WholesalerDashboard} />
