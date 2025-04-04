@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { useAuth } from "@/hooks/use-auth";
 import { 
   LayoutDashboard, 
   Users, 
@@ -30,12 +29,14 @@ type AdminLayoutProps = {
 };
 
 export function AdminLayout({ children }: AdminLayoutProps) {
-  const { user, logoutMutation } = useAuth();
+  // TEMPORARY - Mock user for development
+  const user = { id: 1, username: "admin", role: "admin" };
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleLogout = () => {
-    logoutMutation.mutate();
+    // TEMPORARY: Mock logout - just log to console
+    console.log("Logout clicked");
   };
 
   // Navigation items

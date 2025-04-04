@@ -83,15 +83,38 @@ export default function AuthPage() {
     },
   });
 
-  // Submit login form - temporary mock implementation
+  // Submit login form - temporary implementation with hardcoded credentials
   function onLoginSubmit(data: LoginFormValues) {
     setIsPending(true);
-    // Simulate API call with timeout
+    
+    // Check for our special credentials
     setTimeout(() => {
-      toast({
-        title: "Login attempt",
-        description: `Attempted login with username: ${data.username}. This is a mock implementation.`,
-      });
+      // Check for admin login
+      if ((data.username === "admin" || data.username === "Test@admin.com") && data.password === "Admin123") {
+        toast({
+          title: "Login successful",
+          description: "Welcome, Admin! Redirecting to admin dashboard...",
+        });
+        // Redirect to admin dashboard
+        setTimeout(() => navigate("/admin"), 500);
+      } 
+      // Check for wholesaler login
+      else if (data.username === "wholesaler" && data.password === "Wholesaler123") {
+        toast({
+          title: "Login successful",
+          description: "Welcome, Wholesaler! Redirecting to wholesaler dashboard...",
+        });
+        // Redirect to wholesaler dashboard
+        setTimeout(() => navigate("/wholesaler"), 500);
+      } 
+      // Invalid credentials
+      else {
+        toast({
+          title: "Login failed",
+          description: "Invalid username or password. Try admin/Admin123 or wholesaler/Wholesaler123",
+          variant: "destructive"
+        });
+      }
       setIsPending(false);
     }, 1000);
   }

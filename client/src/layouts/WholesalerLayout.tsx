@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { useAuth } from "@/hooks/use-auth";
 import { 
   LayoutDashboard, 
   ListOrdered, 
@@ -28,12 +27,14 @@ type WholesalerLayoutProps = {
 };
 
 export function WholesalerLayout({ children }: WholesalerLayoutProps) {
-  const { user, logoutMutation } = useAuth();
+  // TEMPORARY - Mock user for development
+  const user = { id: 2, username: "wholesaler", companyName: "Acme Supplies", role: "wholesaler" };
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleLogout = () => {
-    logoutMutation.mutate();
+    // TEMPORARY: Mock logout - just log to console
+    console.log("Logout clicked");
   };
 
   // Navigation items

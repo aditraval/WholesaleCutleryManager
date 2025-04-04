@@ -108,6 +108,42 @@ export class MemStorage implements IStorage {
   }
   
   private seedInitialData() {
+    // Create admin user
+    const adminUser = {
+      username: "admin",
+      email: "Test@admin.com",
+      password: "Admin123",
+      role: "admin",
+      firstName: "Admin",
+      lastName: "User",
+      company: "CutleryWholesale",
+      phone: "555-123-4567",
+      address: "123 Admin St",
+      city: "Admin City",
+      state: "CA",
+      zip: "90210",
+      country: "USA"
+    };
+    this.createUser(adminUser);
+    
+    // Create wholesaler user
+    const wholesalerUser = {
+      username: "wholesaler",
+      email: "test@wholesaler.com",
+      password: "Wholesaler123",
+      role: "wholesaler",
+      firstName: "Wholesaler",
+      lastName: "User",
+      company: "Acme Restaurant Supplies",
+      phone: "555-987-6543",
+      address: "456 Supplier Ave",
+      city: "Supply City",
+      state: "NY",
+      zip: "10001",
+      country: "USA"
+    };
+    this.createUser(wholesalerUser);
+    
     // Create categories
     const categories = [
       { name: "Chef Knives", description: "Professional chef knives for precision cutting" },
