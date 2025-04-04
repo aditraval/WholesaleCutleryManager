@@ -9,6 +9,7 @@ import {
 } from "@shared/schema";
 import session from "express-session";
 import createMemoryStore from "memorystore";
+import { hashPassword } from "./auth";
 
 // modify the interface with any CRUD methods
 // you might need
@@ -104,45 +105,59 @@ export class MemStorage implements IStorage {
     });
     
     // Initialize with categories and sample products
-    this.seedInitialData();
+    // We need to use a self-invoking async function since constructors cannot be async
+    (async () => {
+      try {
+        await this.seedInitialData();
+      } catch (error) {
+        console.error("Failed to seed initial data:", error);
+      }
+    })();
   }
   
-  private seedInitialData() {
-    // Create admin user
-    const adminUser = {
-      username: "admin",
-      email: "Test@admin.com",
-      password: "Admin123",
-      role: "admin",
-      firstName: "Admin",
-      lastName: "User",
-      company: "CutleryWholesale",
-      phone: "555-123-4567",
-      address: "123 Admin St",
-      city: "Admin City",
-      state: "CA",
-      zip: "90210",
-      country: "USA"
-    };
-    this.createUser(adminUser);
-    
-    // Create wholesaler user
-    const wholesalerUser = {
-      username: "wholesaler",
-      email: "test@wholesaler.com",
-      password: "Wholesaler123",
-      role: "wholesaler",
-      firstName: "Wholesaler",
-      lastName: "User",
-      company: "Acme Restaurant Supplies",
-      phone: "555-987-6543",
-      address: "456 Supplier Ave",
-      city: "Supply City",
-      state: "NY",
-      zip: "10001",
-      country: "USA"
-    };
-    this.createUser(wholesalerUser);
+  private async seedInitialData() {
+    try {
+      // Create admin user
+      const hashedAdminPassword = await hashPassword("Admin123");
+      const adminUser = {
+        username: "admin",
+        email: "Test@admin.com",
+        password: hashedAdminPassword,
+        role: "admin",
+        firstName: "Admin",
+        lastName: "User",
+        company: "CutleryWholesale",
+        phone: "555-123-4567",
+        address: "123 Admin St",
+        city: "Admin City",
+        state: "CA",
+        zip: "90210",
+        country: "USA"
+      };
+      await this.createUser(adminUser);
+      
+      // Create wholesaler user
+      const hashedWholesalerPassword = await hashPassword("Wholesaler123");
+      const wholesalerUser = {
+        username: "wholesaler",
+        email: "test@wholesaler.com",
+        password: hashedWholesalerPassword,
+        role: "wholesaler",
+        firstName: "Wholesaler",
+        lastName: "User",
+        company: "Acme Restaurant Supplies",
+        phone: "555-987-6543",
+        address: "456 Supplier Ave",
+        city: "Supply City",
+        state: "NY",
+        zip: "10001",
+        country: "USA"
+      };
+      await this.createUser(wholesalerUser);
+      console.log("Test users created with properly hashed passwords");
+    } catch (error) {
+      console.error("Error seeding initial users:", error);
+    }
     
     // Create categories
     const categories = [
