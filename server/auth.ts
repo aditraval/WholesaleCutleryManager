@@ -1,6 +1,6 @@
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
-import { Express } from "express";
+import { Express, Request, Response, NextFunction } from "express";
 import session from "express-session";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
@@ -22,10 +22,28 @@ async function hashPassword(password: string) {
 }
 
 async function comparePasswords(supplied: string, stored: string) {
+  // If the stored password doesn't have the expected format, authentication fails
+  if (!stored || !stored.includes(".")) {
+    console.error("Invalid password format:", stored);
+    return false;
+  }
+  
   const [hashed, salt] = stored.split(".");
-  const hashedBuf = Buffer.from(hashed, "hex");
-  const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
-  return timingSafeEqual(hashedBuf, suppliedBuf);
+  
+  // Ensure both parts are present
+  if (!hashed || !salt) {
+    console.error("Missing hash or salt in password");
+    return false;
+  }
+  
+  try {
+    const hashedBuf = Buffer.from(hashed, "hex");
+    const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
+    return timingSafeEqual(hashedBuf, suppliedBuf);
+  } catch (error) {
+    console.error("Error comparing passwords:", error);
+    return false;
+  }
 }
 
 export function setupAuth(app: Express) {
@@ -46,11 +64,31 @@ export function setupAuth(app: Express) {
 
   passport.use(
     new LocalStrategy(async (username, password, done) => {
-      const user = await storage.getUserByUsername(username);
-      if (!user || !(await comparePasswords(password, user.password))) {
-        return done(null, false);
-      } else {
+      try {
+        // First check if user exists
+        const user = await storage.getUserByUsername(username);
+        if (!user) {
+          console.log(`Authentication failed: User '${username}' not found`);
+          return done(null, false);
+        }
+
+        // Then verify password
+        if (!user.password) {
+          console.error(`User '${username}' has no password defined`);
+          return done(null, false);
+        }
+
+        const isPasswordValid = await comparePasswords(password, user.password);
+        if (!isPasswordValid) {
+          console.log(`Authentication failed: Invalid password for user '${username}'`);
+          return done(null, false);
+        }
+
+        // Success case
         return done(null, user);
+      } catch (error) {
+        console.error("Authentication error:", error);
+        return done(error);
       }
     }),
   );
@@ -110,7 +148,7 @@ export function setupAuth(app: Express) {
 
 // Middleware for role-based authorization
 export function requireRole(role: string) {
-  return (req: Express.Request, res: Express.Response, next: Express.NextFunction) => {
+  return (req: Request, res: Response, next: NextFunction) => {
     if (!req.isAuthenticated()) {
       return res.status(401).json({ message: "Unauthorized" });
     }
@@ -125,11 +163,11 @@ export function requireRole(role: string) {
 }
 
 // Middleware for admin role
-export function requireAdmin(req: Express.Request, res: Express.Response, next: Express.NextFunction) {
+export function requireAdmin(req: Request, res: Response, next: NextFunction) {
   return requireRole(UserRole.ADMIN)(req, res, next);
 }
 
 // Middleware for wholesaler role
-export function requireWholesaler(req: Express.Request, res: Express.Response, next: Express.NextFunction) {
+export function requireWholesaler(req: Request, res: Response, next: NextFunction) {
   return requireRole(UserRole.WHOLESALER)(req, res, next);
 }

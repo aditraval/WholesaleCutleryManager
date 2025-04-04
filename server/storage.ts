@@ -60,7 +60,7 @@ export interface IStorage {
   listWholesalerRequests(status?: string): Promise<WholesalerRequest[]>;
   
   // Session store
-  sessionStore: session.SessionStore;
+  sessionStore: any; // Any type to avoid import issues
 }
 
 export class MemStorage implements IStorage {
@@ -80,7 +80,7 @@ export class MemStorage implements IStorage {
   currentInvoiceId: number;
   currentWholesalerRequestId: number;
   
-  sessionStore: session.SessionStore;
+  sessionStore: any; // Using any for session store type
 
   constructor() {
     this.users = new Map();

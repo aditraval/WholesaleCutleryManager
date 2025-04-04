@@ -16,6 +16,8 @@ import { Loader2 } from "lucide-react";
 import MainLayout from "@/layouts/MainLayout";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { UseMutationResult } from "@tanstack/react-query";
+import { User } from "@shared/schema";
 
 // Login form schema
 const loginSchema = z.object({
@@ -55,7 +57,7 @@ export default function AdminAuthPage() {
   }
 
   // Create a variable to store loginMutation
-  let loginMutation;
+  let loginMutation: UseMutationResult<User, Error, LoginFormValues> | undefined;
   try {
     // Try to get the loginMutation from useAuth
     const auth = useAuth();
@@ -79,7 +81,7 @@ export default function AdminAuthPage() {
       // If loginMutation was successfully initialized, use it
       if (loginMutation) {
         loginMutation.mutate(data, {
-          onSuccess: (user) => {
+          onSuccess: (user: User) => {
             // Only redirect to admin dashboard if user is admin
             if (user.role === "admin") {
               navigate("/admin");
@@ -108,7 +110,7 @@ export default function AdminAuthPage() {
           }
           return res.json();
         })
-        .then(user => {
+        .then((user: User) => {
           if (user.role === "admin") {
             navigate("/admin");
           } else {
