@@ -9,8 +9,6 @@ import WholesalerCatalog from "@/pages/wholesaler/catalog";
 import WholesalerInvoices from "@/pages/wholesaler/invoices";
 import AdminWholesalers from "@/pages/admin/wholesalers";
 import Landing from "./pages/landing";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { AuthProvider } from "./hooks/use-auth";
 
 // Direct imports for the admin pages to fix module not found errors
 import AdminOrders from "./pages/admin/orders";
@@ -43,17 +41,9 @@ function Router() {
   );
 }
 
-// Create a client
-const queryClient = new QueryClient();
-
+// App component is now simplified since providers are in main.tsx
 function App() {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <Router />
-      </AuthProvider>
-    </QueryClientProvider>
-  );
+  return <Router />;
 }
 
 export default App;

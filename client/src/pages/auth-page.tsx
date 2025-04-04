@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -17,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Loader2 } from "lucide-react";
 import MainLayout from "@/layouts/MainLayout";
+import { useToast } from "@/hooks/use-toast";
 
 // Login form schema
 const loginSchema = z.object({
@@ -40,7 +40,11 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 type RegisterFormValues = z.infer<typeof registerSchema>;
 
 export default function AuthPage() {
-  const { user, loginMutation, registerMutation } = useAuth();
+  // Temporary mock - will be replaced with real auth once backend is ready
+  const user: { id: number; username: string; role: string } | null = null; // Not logged in
+  const [isPending, setIsPending] = useState(false);
+  const { toast } = useToast();
+  
   const [, navigate] = useLocation();
   const [activeTab, setActiveTab] = useState<string>("login");
 
@@ -79,18 +83,30 @@ export default function AuthPage() {
     },
   });
 
-  // Submit login form
+  // Submit login form - temporary mock implementation
   function onLoginSubmit(data: LoginFormValues) {
-    loginMutation.mutate(data);
+    setIsPending(true);
+    // Simulate API call with timeout
+    setTimeout(() => {
+      toast({
+        title: "Login attempt",
+        description: `Attempted login with username: ${data.username}. This is a mock implementation.`,
+      });
+      setIsPending(false);
+    }, 1000);
   }
 
-  // Submit registration form
+  // Submit registration form - temporary mock implementation
   function onRegisterSubmit(data: RegisterFormValues) {
-    // Add role as "wholesaler" for registration
-    registerMutation.mutate({
-      ...data,
-      role: "wholesaler",
-    });
+    setIsPending(true);
+    // Simulate API call with timeout
+    setTimeout(() => {
+      toast({
+        title: "Registration attempt",
+        description: `Attempted to register ${data.username} from ${data.companyName}. This is a mock implementation.`,
+      });
+      setIsPending(false);
+    }, 1000);
   }
 
   return (
@@ -146,9 +162,9 @@ export default function AuthPage() {
                       <Button 
                         type="submit" 
                         className="w-full" 
-                        disabled={loginMutation.isPending}
+                        disabled={isPending}
                       >
-                        {loginMutation.isPending ? (
+                        {isPending ? (
                           <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             Signing in...
@@ -308,9 +324,9 @@ export default function AuthPage() {
                       <Button 
                         type="submit" 
                         className="w-full" 
-                        disabled={registerMutation.isPending}
+                        disabled={isPending}
                       >
-                        {registerMutation.isPending ? (
+                        {isPending ? (
                           <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             Registering...
