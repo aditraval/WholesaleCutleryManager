@@ -1,12 +1,7 @@
-import { useState } from "react";
-import { Link } from "wouter";
-
-// Type for user data
-type User = {
-  id: number;
-  username: string;
-  role: "admin" | "wholesaler";
-};
+import { useState, useEffect } from "react";
+import { Link, useLocation } from "wouter";
+import { User } from "@shared/schema";
+import { useToast } from "@/hooks/use-toast";
 
 type MainLayoutProps = {
   children: React.ReactNode;
@@ -14,13 +9,49 @@ type MainLayoutProps = {
 
 export function MainLayout({ children }: MainLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  
-  // Mock user for testing (set to null for unauthenticated state)
   const [user, setUser] = useState<User | null>(null);
+  const { toast } = useToast();
+  const [, navigate] = useLocation();
+
+  // Fetch the current user
+  useEffect(() => {
+    fetch('/api/user')
+      .then(res => {
+        if (res.ok) return res.json();
+        return null;
+      })
+      .then(userData => {
+        if (userData) {
+          setUser(userData);
+        }
+      })
+      .catch(error => {
+        console.error('Error checking login status:', error);
+      });
+  }, []);
 
   const handleLogout = () => {
-    // For now just log to console
-    console.log("Logout clicked");
+    fetch('/api/logout', {
+      method: 'POST',
+    })
+      .then(res => {
+        if (res.ok) {
+          setUser(null);
+          toast({
+            title: "Logged out",
+            description: "You have been successfully logged out",
+          });
+          navigate('/');
+        }
+      })
+      .catch(error => {
+        console.error('Error during logout:', error);
+        toast({
+          title: "Logout error",
+          description: "Failed to log out. Please try again.",
+          variant: "destructive"
+        });
+      });
   };
 
   return (

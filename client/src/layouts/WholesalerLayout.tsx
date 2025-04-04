@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { 
   LayoutDashboard, 
@@ -21,20 +21,67 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useToast } from "@/hooks/use-toast";
+import { User as UserType } from "@shared/schema";
 
 type WholesalerLayoutProps = {
   children: React.ReactNode;
 };
 
 export function WholesalerLayout({ children }: WholesalerLayoutProps) {
-  // TEMPORARY - Mock user for development
-  const user = { id: 2, username: "wholesaler", companyName: "Acme Supplies", role: "wholesaler" };
-  const [location] = useLocation();
+  const [user, setUser] = useState<UserType | null>(null);
+  const [location, navigate] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { toast } = useToast();
+
+  // Fetch the current user
+  useEffect(() => {
+    fetch('/api/user')
+      .then(res => {
+        if (res.ok) return res.json();
+        throw new Error('Not authenticated');
+      })
+      .then(userData => {
+        if (userData && userData.role === 'wholesaler') {
+          setUser(userData);
+        } else {
+          // If user is not wholesaler, redirect to wholesaler login
+          toast({
+            title: "Access Denied",
+            description: "You need wholesaler access for this area",
+            variant: "destructive"
+          });
+          navigate('/auth-wholesaler');
+        }
+      })
+      .catch(error => {
+        console.error('Authentication error:', error);
+        navigate('/auth-wholesaler');
+      });
+  }, [navigate, toast]);
 
   const handleLogout = () => {
-    // TEMPORARY: Mock logout - just log to console
-    console.log("Logout clicked");
+    fetch('/api/logout', {
+      method: 'POST',
+    })
+      .then(res => {
+        if (res.ok) {
+          setUser(null);
+          toast({
+            title: "Logged out",
+            description: "You have been successfully logged out",
+          });
+          navigate('/');
+        }
+      })
+      .catch(error => {
+        console.error('Error during logout:', error);
+        toast({
+          title: "Logout error",
+          description: "Failed to log out. Please try again.",
+          variant: "destructive"
+        });
+      });
   };
 
   // Navigation items

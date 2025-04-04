@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { 
   LayoutDashboard, 
@@ -23,20 +23,67 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useToast } from "@/hooks/use-toast";
+import { User } from "@shared/schema";
 
 type AdminLayoutProps = {
   children: React.ReactNode;
 };
 
 export function AdminLayout({ children }: AdminLayoutProps) {
-  // TEMPORARY - Mock user for development
-  const user = { id: 1, username: "admin", role: "admin" };
-  const [location] = useLocation();
+  const [user, setUser] = useState<User | null>(null);
+  const [location, navigate] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { toast } = useToast();
+
+  // Fetch the current user
+  useEffect(() => {
+    fetch('/api/user')
+      .then(res => {
+        if (res.ok) return res.json();
+        throw new Error('Not authenticated');
+      })
+      .then(userData => {
+        if (userData && userData.role === 'admin') {
+          setUser(userData);
+        } else {
+          // If user is not admin, redirect to admin login
+          toast({
+            title: "Access Denied",
+            description: "You need admin privileges to access this area",
+            variant: "destructive"
+          });
+          navigate('/auth-admin');
+        }
+      })
+      .catch(error => {
+        console.error('Authentication error:', error);
+        navigate('/auth-admin');
+      });
+  }, [navigate, toast]);
 
   const handleLogout = () => {
-    // TEMPORARY: Mock logout - just log to console
-    console.log("Logout clicked");
+    fetch('/api/logout', {
+      method: 'POST',
+    })
+      .then(res => {
+        if (res.ok) {
+          setUser(null);
+          toast({
+            title: "Logged out",
+            description: "You have been successfully logged out",
+          });
+          navigate('/');
+        }
+      })
+      .catch(error => {
+        console.error('Error during logout:', error);
+        toast({
+          title: "Logout error",
+          description: "Failed to log out. Please try again.",
+          variant: "destructive"
+        });
+      });
   };
 
   // Navigation items

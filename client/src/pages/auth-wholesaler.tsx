@@ -13,10 +13,9 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Loader2 } from "lucide-react";
-import MainLayout from "@/layouts/MainLayout";
+import { MainLayout } from "@/layouts/MainLayout";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/use-auth";
-import { UseMutationResult } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
 import { User } from "@shared/schema";
 
 // Login form schema
@@ -30,41 +29,36 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 export default function WholesalerAuthPage() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-  // Using try-catch to handle cases where AuthProvider might not be available
-  try {
-    const { user, loginMutation } = useAuth();
-    
-    // Redirect if user is already logged in
-    if (user) {
-      if (user.role === "wholesaler") {
-        navigate("/wholesaler");
-        return null; // Return null to prevent rendering the rest of the component
-      } else {
-        toast({
-          title: "Access Denied",
-          description: "This login page is for wholesalers only.",
-          variant: "destructive"
-        });
-        navigate("/");
-        return null; // Return null to prevent rendering the rest of the component
-      }
-    }
-  } catch (error) {
-    // If useAuth throws an error, it means we're not within an AuthProvider
-    // We'll continue rendering the login form
-    console.error("Auth provider not available:", error);
-  }
-
-  // Create a variable to store loginMutation
-  let loginMutation: UseMutationResult<User, Error, LoginFormValues> | undefined;
-  try {
-    // Try to get the loginMutation from useAuth
-    const auth = useAuth();
-    loginMutation = auth.loginMutation;
-  } catch (error) {
-    // If not available, we'll handle this in onLoginSubmit
-  }
+  // Check if user is already logged in - using direct fetch
+  useEffect(() => {
+    fetch('/api/user')
+      .then(res => {
+        if (res.ok) return res.json();
+        return null;
+      })
+      .then(user => {
+        if (user) {
+          setCurrentUser(user);
+          // If user is wholesaler, redirect to wholesaler dashboard
+          if (user.role === 'wholesaler') {
+            navigate('/wholesaler');
+          } else {
+            toast({
+              title: "Access Denied",
+              description: "This login page is for wholesalers only.",
+              variant: "destructive"
+            });
+            navigate("/");
+          }
+        }
+      })
+      .catch(error => {
+        console.error('Error checking login status:', error);
+      });
+  }, [navigate, toast]);
 
   // Login form
   const loginForm = useForm<LoginFormValues>({
@@ -75,69 +69,50 @@ export default function WholesalerAuthPage() {
     },
   });
 
-  // Submit login form using real authentication
+  // Direct login function without relying on context
   function onLoginSubmit(data: LoginFormValues) {
-    try {
-      // If loginMutation was successfully initialized, use it
-      if (loginMutation) {
-        loginMutation.mutate(data, {
-          onSuccess: (user: User) => {
-            // Only redirect to wholesaler dashboard if user is wholesaler
-            if (user.role === "wholesaler") {
-              navigate("/wholesaler");
-            } else {
-              toast({
-                title: "Access Denied",
-                description: "This login page is for wholesalers only.",
-                variant: "destructive"
-              });
-              navigate("/");
-            }
-          }
-        });
-      } else {
-        // If not, we need to handle this - make a direct API call
-        fetch("/api/login", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(data),
-        })
-        .then(res => {
-          if (!res.ok) {
-            throw new Error("Login failed");
-          }
-          return res.json();
-        })
-        .then((user: User) => {
-          if (user.role === "wholesaler") {
-            navigate("/wholesaler");
-          } else {
-            toast({
-              title: "Access Denied",
-              description: "This login page is for wholesalers only.",
-              variant: "destructive"
-            });
-            navigate("/");
-          }
-        })
-        .catch(error => {
-          toast({
-            title: "Login failed",
-            description: "Invalid username or password",
-            variant: "destructive"
-          });
-        });
+    setIsLoggingIn(true);
+    
+    fetch("/api/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    })
+    .then(res => {
+      if (!res.ok) {
+        throw new Error("Login failed");
       }
-    } catch (error) {
+      return res.json();
+    })
+    .then((user: User) => {
+      setIsLoggingIn(false);
+      
+      if (user.role === "wholesaler") {
+        toast({
+          title: "Login successful",
+          description: "Welcome to your wholesaler account",
+        });
+        navigate("/wholesaler");
+      } else {
+        toast({
+          title: "Access Denied",
+          description: "This login page is for wholesalers only.",
+          variant: "destructive"
+        });
+        navigate("/");
+      }
+    })
+    .catch(error => {
+      setIsLoggingIn(false);
       console.error("Login error:", error);
       toast({
         title: "Login failed",
-        description: "An error occurred during login. Please try again.",
+        description: "Invalid username or password",
         variant: "destructive"
       });
-    }
+    });
   }
 
   return (
@@ -185,9 +160,9 @@ export default function WholesalerAuthPage() {
                   <Button 
                     type="submit" 
                     className="w-full" 
-                    disabled={loginMutation && loginMutation.isPending}
+                    disabled={isLoggingIn}
                   >
-                    {loginMutation && loginMutation.isPending ? (
+                    {isLoggingIn ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         Signing in...

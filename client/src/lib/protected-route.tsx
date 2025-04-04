@@ -1,6 +1,8 @@
-import { useAuth } from "@/hooks/use-auth";
 import { Loader2 } from "lucide-react";
 import { Redirect, Route } from "wouter";
+import { useState, useEffect } from "react";
+import { useToast } from "@/hooks/use-toast";
+import { User } from "@shared/schema";
 
 export function ProtectedRoute({
   path,
@@ -11,49 +13,64 @@ export function ProtectedRoute({
   component: () => React.JSX.Element;
   role?: string;
 }) {
-  // Use try-catch to safely handle auth context issues
-  try {
-    const { user, isLoading } = useAuth();
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+  const { toast } = useToast();
 
-    if (isLoading) {
-      return (
-        <Route path={path}>
-          <div className="flex items-center justify-center min-h-screen">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          </div>
-        </Route>
-      );
-    }
+  useEffect(() => {
+    fetch('/api/user')
+      .then(res => {
+        if (res.ok) return res.json();
+        throw new Error('Not authenticated');
+      })
+      .then(userData => {
+        setUser(userData);
+        setIsLoading(false);
+      })
+      .catch(error => {
+        console.error('Authentication error:', error);
+        setHasError(true);
+        setIsLoading(false);
+      });
+  }, []);
 
-    if (!user) {
-      return (
-        <Route path={path}>
-          <Redirect to="/auth" />
-        </Route>
-      );
-    }
+  if (isLoading) {
+    return (
+      <Route path={path}>
+        <div className="flex items-center justify-center min-h-screen">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </Route>
+    );
+  }
 
-    if (role && user.role !== role) {
-      return (
-        <Route path={path}>
-          <div className="flex flex-col items-center justify-center min-h-screen">
-            <h1 className="text-2xl font-bold text-red-600 mb-2">Access Denied</h1>
-            <p className="text-gray-600">You don't have permission to access this page.</p>
-          </div>
-        </Route>
-      );
-    }
-
-    return <Route path={path} component={Component} />;
-  } catch (error) {
-    console.error("Auth provider not available:", error);
-    // Fallback if the auth provider is not available
+  if (hasError || !user) {
     return (
       <Route path={path}>
         <Redirect to="/auth" />
       </Route>
     );
   }
+
+  if (role && user.role !== role) {
+    // Use the appropriate redirect based on role
+    const redirectPath = role === 'admin' ? '/auth-admin' : '/auth-wholesaler';
+    
+    toast({
+      title: "Access Denied",
+      description: `You need ${role} permissions to access this page`,
+      variant: "destructive"
+    });
+
+    return (
+      <Route path={path}>
+        <Redirect to={redirectPath} />
+      </Route>
+    );
+  }
+
+  return <Route path={path} component={Component} />;
 }
 
 export function AdminRoute({
