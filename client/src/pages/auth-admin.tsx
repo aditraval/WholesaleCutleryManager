@@ -79,6 +79,7 @@ export default function AdminAuthPage() {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(data),
+      credentials: 'include'  // Important for session handling
     })
     .then(res => {
       if (!res.ok) {
@@ -88,6 +89,7 @@ export default function AdminAuthPage() {
     })
     .then((user: User) => {
       setIsLoggingIn(false);
+      setCurrentUser(user);
       
       if (user.role === "admin") {
         toast({
