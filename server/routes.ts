@@ -2,7 +2,15 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, requireAdmin, requireWholesaler } from "./auth";
-import { insertWholesalerRequestSchema, insertProductSchema, insertOrderSchema, insertOrderItemSchema, insertInvoiceSchema } from "@shared/schema";
+import { 
+  insertWholesalerRequestSchema, 
+  insertProductSchema, 
+  insertOrderSchema, 
+  insertOrderItemSchema, 
+  insertInvoiceSchema, 
+  insertPricingTierSchema,
+  PricingTier
+} from "@shared/schema";
 import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -279,11 +287,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const user = req.user as Express.User;
-      const order = await storage.getOrder(invoice.orderId);
       
-      // Ensure wholesalers can only access their own invoices
-      if (user.role === "wholesaler" && order && order.userId !== user.id) {
-        return res.status(403).json({ message: "Forbidden" });
+      // For wholesalers, we need to check ownership
+      if (user.role === "wholesaler") {
+        if (!invoice.orderId) {
+          return res.status(403).json({ message: "Forbidden" });
+        }
+        
+        const order = await storage.getOrder(invoice.orderId);
+        if (!order || order.userId !== user.id) {
+          return res.status(403).json({ message: "Forbidden" });
+        }
       }
       
       res.json(invoice);
@@ -307,6 +321,108 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       res.json(invoice);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Pricing tier routes
+  app.post("/api/pricing-tiers", requireAdmin, async (req, res, next) => {
+    try {
+      const data = insertPricingTierSchema.parse(req.body);
+      
+      // Ensure referenced product exists
+      const product = await storage.getProduct(data.productId);
+      if (!product) {
+        return res.status(400).json({ message: "Referenced product does not exist" });
+      }
+      
+      const pricingTier = await storage.createPricingTier(data);
+      res.status(201).json(pricingTier);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid pricing tier data", errors: error.errors });
+      }
+      next(error);
+    }
+  });
+  
+  app.get("/api/pricing-tiers", async (req, res, next) => {
+    try {
+      const user = req.user as Express.User;
+      const productId = req.query.productId 
+        ? parseInt(req.query.productId as string) 
+        : undefined;
+      
+      // For admin, allow filtering by tier as well
+      if (user.role === "admin") {
+        const tier = req.query.tier as string | undefined;
+        const pricingTiers = await storage.listPricingTiers(productId, tier);
+        return res.json(pricingTiers);
+      }
+      
+      // For wholesaler, only return pricing tiers matching their pricing tier
+      // Make sure pricingTier is defined (it should be a string or undefined)
+      // Use a fallback to "standard" tier if none is set
+      const wholesalerTier = user.pricingTier || "standard";
+      const pricingTiers = await storage.listPricingTiers(productId, wholesalerTier);
+      res.json(pricingTiers);
+    } catch (error) {
+      next(error);
+    }
+  });
+  
+  app.get("/api/pricing-tiers/:id", async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      const pricingTier = await storage.getPricingTier(id);
+      
+      if (!pricingTier) {
+        return res.status(404).json({ message: "Pricing tier not found" });
+      }
+      
+      const user = req.user as Express.User;
+      
+      // Ensure wholesalers can only access their own pricing tier
+      if (user.role === "wholesaler") {
+        // Use a fallback to "standard" if not set
+        const wholesalerTier = user.pricingTier || "standard";
+        if (pricingTier.tier !== wholesalerTier) {
+          return res.status(403).json({ message: "Forbidden" });
+        }
+      }
+      
+      res.json(pricingTier);
+    } catch (error) {
+      next(error);
+    }
+  });
+  
+  app.patch("/api/pricing-tiers/:id", requireAdmin, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      const pricingTier = await storage.updatePricingTier(id, req.body);
+      
+      if (!pricingTier) {
+        return res.status(404).json({ message: "Pricing tier not found" });
+      }
+      
+      res.json(pricingTier);
+    } catch (error) {
+      next(error);
+    }
+  });
+  
+  app.delete("/api/pricing-tiers/:id", requireAdmin, async (req, res, next) => {
+    try {
+      const id = parseInt(req.params.id);
+      const success = await storage.deletePricingTier(id);
+      
+      if (!success) {
+        return res.status(404).json({ message: "Pricing tier not found" });
+      }
+      
+      res.status(204).send();
     } catch (error) {
       next(error);
     }

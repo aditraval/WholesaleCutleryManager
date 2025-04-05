@@ -1,12 +1,20 @@
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb, numeric, foreignKey } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb, numeric, foreignKey, primaryKey, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { relations } from "drizzle-orm";
 
 // Define roles enum
 export const UserRole = {
   ADMIN: "admin",
   WHOLESALER: "wholesaler",
   GUEST: "guest"
+} as const;
+
+// Define pricing tier enum
+export const PricingTier = {
+  STANDARD: "standard",
+  PREMIUM: "premium",
+  ENTERPRISE: "enterprise"
 } as const;
 
 // Users table
@@ -22,8 +30,13 @@ export const users = pgTable("users", {
   businessType: text("business_type"),
   contactName: text("contact_name"),
   createdAt: timestamp("created_at").defaultNow(),
-  pricingTier: text("pricing_tier").default("standard")
+  pricingTier: text("pricing_tier").default(PricingTier.STANDARD)
 });
+
+// Define user relations
+export const usersRelations = relations(users, ({ many }) => ({
+  orders: many(orders)
+}));
 
 // Product Categories
 export const categories = pgTable("categories", {
@@ -32,17 +45,53 @@ export const categories = pgTable("categories", {
   description: text("description")
 });
 
+// Define category relations
+export const categoriesRelations = relations(categories, ({ many }) => ({
+  products: many(products)
+}));
+
 // Products table
 export const products = pgTable("products", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   description: text("description"),
   sku: text("sku").notNull().unique(),
-  price: numeric("price").notNull(),
+  basePrice: numeric("base_price").notNull(),
   inventory: integer("inventory").notNull().default(0),
   categoryId: integer("category_id").references(() => categories.id),
   imageUrl: text("image_url")
 });
+
+// Define product relations
+export const productsRelations = relations(products, ({ one, many }) => ({
+  category: one(categories, {
+    fields: [products.categoryId],
+    references: [categories.id]
+  }),
+  orderItems: many(orderItems),
+  pricingItems: many(pricingTiers)
+}));
+
+// Pricing tiers table for different wholesaler pricing
+export const pricingTiers = pgTable("pricing_tiers", {
+  id: serial("id").primaryKey(),
+  productId: integer("product_id").notNull().references(() => products.id),
+  tier: text("tier").notNull().default(PricingTier.STANDARD),
+  price: numeric("price").notNull(),
+  minQuantity: integer("min_quantity").default(1)
+}, (table) => {
+  return {
+    productTierUnique: uniqueIndex("product_tier_unique_idx").on(table.productId, table.tier)
+  };
+});
+
+// Define pricing tier relations
+export const pricingTiersRelations = relations(pricingTiers, ({ one }) => ({
+  product: one(products, {
+    fields: [pricingTiers.productId],
+    references: [products.id]
+  })
+}));
 
 // Orders table
 export const orders = pgTable("orders", {
@@ -51,8 +100,18 @@ export const orders = pgTable("orders", {
   status: text("status").notNull().default("pending"),
   totalAmount: numeric("total_amount").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow()
+  updatedAt: timestamp("updated_at").defaultNow(),
+  notes: text("notes")
 });
+
+// Define order relations
+export const ordersRelations = relations(orders, ({ one, many }) => ({
+  user: one(users, {
+    fields: [orders.userId],
+    references: [users.id]
+  }),
+  orderItems: many(orderItems)
+}));
 
 // Order Items table
 export const orderItems = pgTable("order_items", {
@@ -63,6 +122,18 @@ export const orderItems = pgTable("order_items", {
   price: numeric("price").notNull()
 });
 
+// Define order items relations
+export const orderItemsRelations = relations(orderItems, ({ one }) => ({
+  order: one(orders, {
+    fields: [orderItems.orderId],
+    references: [orders.id]
+  }),
+  product: one(products, {
+    fields: [orderItems.productId],
+    references: [products.id]
+  })
+}));
+
 // Invoices table
 export const invoices = pgTable("invoices", {
   id: serial("id").primaryKey(),
@@ -70,8 +141,17 @@ export const invoices = pgTable("invoices", {
   status: text("status").notNull().default("unpaid"),
   issuedDate: timestamp("issued_date").defaultNow(),
   dueDate: timestamp("due_date"),
-  amount: numeric("amount").notNull()
+  amount: numeric("amount").notNull(),
+  paymentMethod: text("payment_method")
 });
+
+// Define invoice relations
+export const invoicesRelations = relations(invoices, ({ one }) => ({
+  order: one(orders, {
+    fields: [invoices.orderId],
+    references: [orders.id]
+  })
+}));
 
 // Wholesaler Requests table
 export const wholesalerRequests = pgTable("wholesaler_requests", {
@@ -105,7 +185,7 @@ export const insertProductSchema = createInsertSchema(products).pick({
   name: true,
   description: true,
   sku: true,
-  price: true,
+  basePrice: true,
   inventory: true,
   categoryId: true,
   imageUrl: true
@@ -119,7 +199,8 @@ export const insertCategorySchema = createInsertSchema(categories).pick({
 export const insertOrderSchema = createInsertSchema(orders).pick({
   userId: true,
   status: true,
-  totalAmount: true
+  totalAmount: true,
+  notes: true
 });
 
 export const insertOrderItemSchema = createInsertSchema(orderItems).pick({
@@ -147,6 +228,13 @@ export const insertWholesalerRequestSchema = createInsertSchema(wholesalerReques
   status: true
 });
 
+export const insertPricingTierSchema = createInsertSchema(pricingTiers).pick({
+  productId: true,
+  tier: true,
+  price: true,
+  minQuantity: true
+});
+
 // Type definitions
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -168,3 +256,6 @@ export type InsertInvoice = z.infer<typeof insertInvoiceSchema>;
 
 export type WholesalerRequest = typeof wholesalerRequests.$inferSelect;
 export type InsertWholesalerRequest = z.infer<typeof insertWholesalerRequestSchema>;
+
+export type PricingTier = typeof pricingTiers.$inferSelect;
+export type InsertPricingTier = z.infer<typeof insertPricingTierSchema>;

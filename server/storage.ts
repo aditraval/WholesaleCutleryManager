@@ -5,15 +5,18 @@ import {
   orders, type Order, type InsertOrder, 
   orderItems, type OrderItem, type InsertOrderItem,
   invoices, type Invoice, type InsertInvoice,
-  wholesalerRequests, type WholesalerRequest, type InsertWholesalerRequest
+  wholesalerRequests, type WholesalerRequest, type InsertWholesalerRequest,
+  pricingTiers, type PricingTier, type InsertPricingTier
 } from "@shared/schema";
+import { db } from "./db";
+import { eq, and, or, desc, asc, count, sql, inArray } from "drizzle-orm";
 import session from "express-session";
-import createMemoryStore from "memorystore";
+import connectPg from "connect-pg-simple";
+import { pool } from "./db";
 import { hashPassword } from "./auth";
 
-// modify the interface with any CRUD methods
-// you might need
-const MemoryStore = createMemoryStore(session);
+// PostgreSQL session store
+const PostgresSessionStore = connectPg(session);
 
 export interface IStorage {
   // User operations
@@ -31,6 +34,12 @@ export interface IStorage {
   updateProduct(id: number, product: Partial<InsertProduct>): Promise<Product | undefined>;
   listProducts(categoryId?: number): Promise<Product[]>;
   deleteProduct(id: number): Promise<boolean>;
+  
+  // Pricing tier operations
+  getPricingTier?(id: number): Promise<PricingTier | undefined>;
+  createPricingTier?(tier: InsertPricingTier): Promise<PricingTier>;
+  updatePricingTier?(id: number, tier: Partial<InsertPricingTier>): Promise<PricingTier | undefined>;
+  listPricingTiers?(productId?: number, tier?: string): Promise<PricingTier[]>;
   
   // Category operations
   getCategory(id: number): Promise<Category | undefined>;
@@ -64,324 +73,317 @@ export interface IStorage {
   sessionStore: any; // Any type to avoid import issues
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<number, User>;
-  private products: Map<number, Product>;
-  private categories: Map<number, Category>;
-  private orders: Map<number, Order>;
-  private orderItems: Map<number, OrderItem>;
-  private invoices: Map<number, Invoice>;
-  private wholesalerRequests: Map<number, WholesalerRequest>;
+export class DatabaseStorage implements IStorage {
+  sessionStore: any;
   
-  currentUserId: number;
-  currentProductId: number;
-  currentCategoryId: number;
-  currentOrderId: number;
-  currentOrderItemId: number;
-  currentInvoiceId: number;
-  currentWholesalerRequestId: number;
-  
-  sessionStore: any; // Using any for session store type
-
   constructor() {
-    this.users = new Map();
-    this.products = new Map();
-    this.categories = new Map();
-    this.orders = new Map();
-    this.orderItems = new Map();
-    this.invoices = new Map();
-    this.wholesalerRequests = new Map();
-    
-    this.currentUserId = 1;
-    this.currentProductId = 1;
-    this.currentCategoryId = 1;
-    this.currentOrderId = 1;
-    this.currentOrderItemId = 1;
-    this.currentInvoiceId = 1;
-    this.currentWholesalerRequestId = 1;
-    
-    this.sessionStore = new MemoryStore({
-      checkPeriod: 86400000 // prune expired entries every 24h
+    this.sessionStore = new PostgresSessionStore({
+      pool,
+      createTableIfMissing: true
     });
     
-    // Initialize with categories and sample products
-    // We need to use a self-invoking async function since constructors cannot be async
-    (async () => {
-      try {
-        await this.seedInitialData();
-      } catch (error) {
-        console.error("Failed to seed initial data:", error);
-      }
-    })();
+    // Initialize the database with test users if they don't exist
+    this.seedInitialData().catch(error => {
+      console.error("Failed to seed initial data:", error);
+    });
   }
   
   private async seedInitialData() {
     try {
-      // Create admin user
-      const hashedAdminPassword = await hashPassword("Admin123");
-      const adminUser = {
-        username: "admin",
-        email: "Test@admin.com",
-        password: hashedAdminPassword,
-        role: "admin",
-        firstName: "Admin",
-        lastName: "User",
-        company: "CutleryWholesale",
-        phone: "555-123-4567",
-        address: "123 Admin St",
-        city: "Admin City",
-        state: "CA",
-        zip: "90210",
-        country: "USA"
-      };
-      await this.createUser(adminUser);
+      // Check if admin user exists
+      const adminUser = await this.getUserByUsername("admin");
+      if (!adminUser) {
+        // Create admin user
+        const hashedAdminPassword = await hashPassword("Admin123");
+        await this.createUser({
+          username: "admin",
+          email: "admin@cutlerywholesale.com",
+          password: hashedAdminPassword,
+          role: "admin",
+          companyName: "Cutlery Wholesale Admin",
+          contactName: "Admin User",
+          phoneNumber: "555-123-4567",
+          country: "USA",
+          businessType: "Administration"
+        });
+      }
       
-      // Create wholesaler user
-      const hashedWholesalerPassword = await hashPassword("Wholesaler123");
-      const wholesalerUser = {
-        username: "wholesaler",
-        email: "test@wholesaler.com",
-        password: hashedWholesalerPassword,
-        role: "wholesaler",
-        firstName: "Wholesaler",
-        lastName: "User",
-        company: "Acme Restaurant Supplies",
-        phone: "555-987-6543",
-        address: "456 Supplier Ave",
-        city: "Supply City",
-        state: "NY",
-        zip: "10001",
-        country: "USA"
-      };
-      await this.createUser(wholesalerUser);
-      console.log("Test users created with properly hashed passwords");
+      // Check if wholesaler user exists
+      const wholesalerUser = await this.getUserByUsername("wholesaler");
+      if (!wholesalerUser) {
+        // Create wholesaler user
+        const hashedWholesalerPassword = await hashPassword("Wholesaler123");
+        await this.createUser({
+          username: "wholesaler",
+          email: "test@wholesaler.com",
+          password: hashedWholesalerPassword,
+          role: "wholesaler",
+          companyName: "Test Restaurant Supplies",
+          contactName: "Wholesaler User",
+          phoneNumber: "555-987-6543",
+          country: "USA",
+          businessType: "Restaurant Supply"
+        });
+      }
+      
+      // Create categories if they don't exist
+      const categoryResults = await db.select({ count: sql<number>`count(*)` }).from(categories);
+      if (categoryResults[0].count === 0) {
+        const defaultCategories = [
+          { name: "Chef Knives", description: "Professional chef knives for precision cutting" },
+          { name: "Flatware", description: "Premium flatware sets for fine dining" },
+          { name: "Kitchen Tools", description: "Specialty kitchen tools for professional kitchens" }
+        ];
+        
+        for (const category of defaultCategories) {
+          await this.createCategory(category);
+        }
+      }
+      
+      console.log("Database initialized with default data if needed");
     } catch (error) {
-      console.error("Error seeding initial users:", error);
+      console.error("Error seeding initial data:", error);
     }
-    
-    // Create categories
-    const categories = [
-      { name: "Chef Knives", description: "Professional chef knives for precision cutting" },
-      { name: "Flatware", description: "Premium flatware sets for fine dining" },
-      { name: "Kitchen Tools", description: "Specialty kitchen tools for professional kitchens" }
-    ];
-    
-    categories.forEach(cat => this.createCategory(cat));
   }
-
+  
   // User operations
   async getUser(id: number): Promise<User | undefined> {
-    return this.users.get(id);
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
   }
-
+  
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user;
   }
   
   async getUserByEmail(email: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.email === email,
-    );
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
   }
-
+  
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = this.currentUserId++;
-    const createdAt = new Date();
-    const user: User = { ...insertUser, id, createdAt };
-    this.users.set(id, user);
+    const [user] = await db.insert(users).values(insertUser).returning();
     return user;
   }
   
   async updateUser(id: number, userData: Partial<InsertUser>): Promise<User | undefined> {
-    const user = this.users.get(id);
-    if (!user) return undefined;
-    
-    const updatedUser = { ...user, ...userData };
-    this.users.set(id, updatedUser);
+    const [updatedUser] = await db.update(users)
+      .set(userData)
+      .where(eq(users.id, id))
+      .returning();
     return updatedUser;
   }
   
   async listUsers(role?: string): Promise<User[]> {
-    const allUsers = Array.from(this.users.values());
     if (role) {
-      return allUsers.filter(user => user.role === role);
+      return db.select().from(users).where(eq(users.role, role));
     }
-    return allUsers;
+    return db.select().from(users);
   }
   
   // Product operations
   async getProduct(id: number): Promise<Product | undefined> {
-    return this.products.get(id);
+    const [product] = await db.select().from(products).where(eq(products.id, id));
+    return product;
   }
   
   async getProductBySKU(sku: string): Promise<Product | undefined> {
-    return Array.from(this.products.values()).find(
-      (product) => product.sku === sku,
-    );
+    const [product] = await db.select().from(products).where(eq(products.sku, sku));
+    return product;
   }
   
   async createProduct(insertProduct: InsertProduct): Promise<Product> {
-    const id = this.currentProductId++;
-    const product: Product = { ...insertProduct, id };
-    this.products.set(id, product);
+    const [product] = await db.insert(products).values(insertProduct).returning();
     return product;
   }
   
   async updateProduct(id: number, productData: Partial<InsertProduct>): Promise<Product | undefined> {
-    const product = this.products.get(id);
-    if (!product) return undefined;
-    
-    const updatedProduct = { ...product, ...productData };
-    this.products.set(id, updatedProduct);
+    const [updatedProduct] = await db.update(products)
+      .set(productData)
+      .where(eq(products.id, id))
+      .returning();
     return updatedProduct;
   }
   
   async listProducts(categoryId?: number): Promise<Product[]> {
-    const allProducts = Array.from(this.products.values());
     if (categoryId) {
-      return allProducts.filter(product => product.categoryId === categoryId);
+      return db.select().from(products).where(eq(products.categoryId, categoryId));
     }
-    return allProducts;
+    return db.select().from(products);
   }
   
   async deleteProduct(id: number): Promise<boolean> {
-    return this.products.delete(id);
+    const result = await db.delete(products).where(eq(products.id, id));
+    return !!result;
+  }
+  
+  // Pricing tier operations
+  async getPricingTier(id: number): Promise<PricingTier | undefined> {
+    const [tier] = await db.select().from(pricingTiers).where(eq(pricingTiers.id, id));
+    return tier;
+  }
+  
+  async createPricingTier(insertTier: InsertPricingTier): Promise<PricingTier> {
+    const [tier] = await db.insert(pricingTiers).values(insertTier).returning();
+    return tier;
+  }
+  
+  async updatePricingTier(id: number, tierData: Partial<InsertPricingTier>): Promise<PricingTier | undefined> {
+    const [updatedTier] = await db.update(pricingTiers)
+      .set(tierData)
+      .where(eq(pricingTiers.id, id))
+      .returning();
+    return updatedTier;
+  }
+  
+  async listPricingTiers(productId?: number, tier?: string): Promise<PricingTier[]> {
+    if (productId && tier) {
+      return db.select().from(pricingTiers)
+        .where(and(
+          eq(pricingTiers.productId, productId),
+          eq(pricingTiers.tier, tier)
+        ));
+    } else if (productId) {
+      return db.select().from(pricingTiers).where(eq(pricingTiers.productId, productId));
+    } else if (tier) {
+      return db.select().from(pricingTiers).where(eq(pricingTiers.tier, tier));
+    }
+    return db.select().from(pricingTiers);
+  }
+  
+  async deletePricingTier(id: number): Promise<boolean> {
+    const result = await db.delete(pricingTiers).where(eq(pricingTiers.id, id));
+    return !!result;
   }
   
   // Category operations
   async getCategory(id: number): Promise<Category | undefined> {
-    return this.categories.get(id);
+    const [category] = await db.select().from(categories).where(eq(categories.id, id));
+    return category;
   }
   
   async createCategory(insertCategory: InsertCategory): Promise<Category> {
-    const id = this.currentCategoryId++;
-    const category: Category = { ...insertCategory, id };
-    this.categories.set(id, category);
+    const [category] = await db.insert(categories).values(insertCategory).returning();
     return category;
   }
   
   async listCategories(): Promise<Category[]> {
-    return Array.from(this.categories.values());
+    return db.select().from(categories);
   }
   
   // Order operations
   async getOrder(id: number): Promise<Order | undefined> {
-    return this.orders.get(id);
+    const [order] = await db.select().from(orders).where(eq(orders.id, id));
+    return order;
   }
   
   async createOrder(insertOrder: InsertOrder): Promise<Order> {
-    const id = this.currentOrderId++;
-    const createdAt = new Date();
-    const updatedAt = new Date();
-    const order: Order = { ...insertOrder, id, createdAt, updatedAt };
-    this.orders.set(id, order);
+    const [order] = await db.insert(orders).values(insertOrder).returning();
     return order;
   }
   
   async updateOrderStatus(id: number, status: string): Promise<Order | undefined> {
-    const order = this.orders.get(id);
-    if (!order) return undefined;
-    
-    const updatedOrder = { ...order, status, updatedAt: new Date() };
-    this.orders.set(id, updatedOrder);
+    const [updatedOrder] = await db.update(orders)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(orders.id, id))
+      .returning();
     return updatedOrder;
   }
   
   async listOrders(userId?: number): Promise<Order[]> {
-    const allOrders = Array.from(this.orders.values());
     if (userId) {
-      return allOrders.filter(order => order.userId === userId);
+      return db.select().from(orders).where(eq(orders.userId, userId));
     }
-    return allOrders;
+    return db.select().from(orders).orderBy(desc(orders.createdAt));
   }
   
   // Order items operations
   async getOrderItems(orderId: number): Promise<OrderItem[]> {
-    return Array.from(this.orderItems.values()).filter(
-      (item) => item.orderId === orderId,
-    );
+    return db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
   }
   
   async createOrderItem(insertOrderItem: InsertOrderItem): Promise<OrderItem> {
-    const id = this.currentOrderItemId++;
-    const orderItem: OrderItem = { ...insertOrderItem, id };
-    this.orderItems.set(id, orderItem);
+    const [orderItem] = await db.insert(orderItems).values(insertOrderItem).returning();
     return orderItem;
   }
   
   // Invoice operations
   async getInvoice(id: number): Promise<Invoice | undefined> {
-    return this.invoices.get(id);
+    const [invoice] = await db.select().from(invoices).where(eq(invoices.id, id));
+    return invoice;
   }
   
   async getInvoiceByOrder(orderId: number): Promise<Invoice | undefined> {
-    return Array.from(this.invoices.values()).find(
-      (invoice) => invoice.orderId === orderId,
-    );
+    const [invoice] = await db.select().from(invoices).where(eq(invoices.orderId, orderId));
+    return invoice;
   }
   
   async createInvoice(insertInvoice: InsertInvoice): Promise<Invoice> {
-    const id = this.currentInvoiceId++;
-    const issuedDate = new Date();
-    const invoice: Invoice = { ...insertInvoice, id, issuedDate };
-    this.invoices.set(id, invoice);
+    const [invoice] = await db.insert(invoices).values({
+      ...insertInvoice,
+      paymentMethod: null // Default value for the required field
+    }).returning();
     return invoice;
   }
   
   async updateInvoiceStatus(id: number, status: string): Promise<Invoice | undefined> {
-    const invoice = this.invoices.get(id);
-    if (!invoice) return undefined;
-    
-    const updatedInvoice = { ...invoice, status };
-    this.invoices.set(id, updatedInvoice);
+    const [updatedInvoice] = await db.update(invoices)
+      .set({ status })
+      .where(eq(invoices.id, id))
+      .returning();
     return updatedInvoice;
   }
   
   async listInvoices(userId?: number): Promise<Invoice[]> {
-    const allInvoices = Array.from(this.invoices.values());
     if (userId) {
-      // Get all orders for this user
-      const userOrders = Array.from(this.orders.values())
-        .filter(order => order.userId === userId)
-        .map(order => order.id);
+      const userOrders = await db.select({ id: orders.id })
+        .from(orders)
+        .where(eq(orders.userId, userId));
       
-      // Return invoices for those orders
-      return allInvoices.filter(invoice => userOrders.includes(invoice.orderId));
+      const orderIds = userOrders.map(o => o.id);
+      
+      if (orderIds.length === 0) {
+        return [];
+      }
+      
+      return db.select()
+        .from(invoices)
+        .where(inArray(invoices.orderId, orderIds))
+        .orderBy(desc(invoices.issuedDate));
     }
-    return allInvoices;
+    
+    return db.select()
+      .from(invoices)
+      .orderBy(desc(invoices.issuedDate));
   }
   
   // Wholesaler request operations
   async getWholesalerRequest(id: number): Promise<WholesalerRequest | undefined> {
-    return this.wholesalerRequests.get(id);
+    const [request] = await db.select().from(wholesalerRequests).where(eq(wholesalerRequests.id, id));
+    return request;
   }
   
   async createWholesalerRequest(insertRequest: InsertWholesalerRequest): Promise<WholesalerRequest> {
-    const id = this.currentWholesalerRequestId++;
-    const createdAt = new Date();
-    const request: WholesalerRequest = { ...insertRequest, id, createdAt };
-    this.wholesalerRequests.set(id, request);
+    const [request] = await db.insert(wholesalerRequests).values(insertRequest).returning();
     return request;
   }
   
   async updateWholesalerRequestStatus(id: number, status: string): Promise<WholesalerRequest | undefined> {
-    const request = this.wholesalerRequests.get(id);
-    if (!request) return undefined;
-    
-    const updatedRequest = { ...request, status };
-    this.wholesalerRequests.set(id, updatedRequest);
+    const [updatedRequest] = await db.update(wholesalerRequests)
+      .set({ status })
+      .where(eq(wholesalerRequests.id, id))
+      .returning();
     return updatedRequest;
   }
   
   async listWholesalerRequests(status?: string): Promise<WholesalerRequest[]> {
-    const allRequests = Array.from(this.wholesalerRequests.values());
     if (status) {
-      return allRequests.filter(request => request.status === status);
+      return db.select().from(wholesalerRequests).where(eq(wholesalerRequests.status, status));
     }
-    return allRequests;
+    return db.select().from(wholesalerRequests).orderBy(desc(wholesalerRequests.createdAt));
   }
 }
 
-export const storage = new MemStorage();
+// Use database storage instead of memory storage
+export const storage = new DatabaseStorage();
